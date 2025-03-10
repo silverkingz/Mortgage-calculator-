@@ -1,76 +1,74 @@
 function calculate() {
     // Get input values
-    const loanAmount = parseFloat(document.getElementById('loanAmount').value);
-    const currentRate = parseFloat(document.getElementById('currentRate').value);
-    const newRate = parseFloat(document.getElementById('newRate').value);
-    const years = parseInt(document.getElementById('years').value);
-    const extraPayment = parseFloat(document.getElementById('extraPayment').value) || 0;
+    const principal = parseFloat(document.getElementById('principal').value);
+    const years = parseFloat(document.getElementById('years').value);
+    const currentRate = parseFloat(document.getElementById('currentRate').value)/100;
+    const newRate = parseFloat(document.getElementById('newRate').value)/100;
+    const weeklyPayment = parseFloat(document.getElementById('weeklyPayment').value);
 
-    // Validate inputs
-    if (!loanAmount || !currentRate || !newRate || !years) {
-        alert("Please fill in all required fields");
-        return;
+    // Calculate monthly equivalents
+    const months = years * 12;
+    const monthlyPaymentCurrent = calculateMonthlyPayment(principal, currentRate, years);
+    const monthlyPaymentNew = calculateMonthlyPayment(principal, newRate, years);
+    const keptMonthlyPayment = weeklyPayment * 52 / 12;
+
+    // Calculate savings and extra principal
+    const currentInterest = calculateTotalInterest(principal, currentRate, monthlyPaymentCurrent);
+    const newInterestMinimum = calculateTotalInterest(principal, newRate, monthlyPaymentNew);
+    const newInterestKept = calculateTotalInterest(principal, newRate, keptMonthlyPayment);
+    
+    // Build results
+    let resultsHTML = `
+        <div class="result-item">
+            <h3>Original Payment (${currentRate*100}%):</h3>
+            $${monthlyPaymentCurrent.toFixed(2)}/month
+        </div>
+
+        <div class="result-item">
+            <h3>New Minimum Payment (${newRate*100}%):</h3>
+            $${monthlyPaymentNew.toFixed(2)}/month
+            <div class="savings">($${(monthlyPaymentCurrent - monthlyPaymentNew).toFixed(2)}/month savings available)</div>
+        </div>`;
+
+    if (keptMonthlyPayment > monthlyPaymentNew) {
+        const extraPrincipal = keptMonthlyPayment - monthlyPaymentNew;
+        const interestSaved = currentInterest - newInterestKept;
+        const principalPaidExtra = (keptMonthlyPayment - monthlyPaymentNew) * 12 * years;
+        
+        resultsHTML += `
+            <div class="result-item savings">
+                <h3>By Keeping Payments at $${weeklyPayment}/week ($${keptMonthlyPayment.toFixed(2)}/month):</h3>
+                <div>Extra Principal Paid Monthly: $${extraPrincipal.toFixed(2)}</div>
+                <div>Total Interest Saved: $${interestSaved.toFixed(2)}</div>
+                <div>Total Principal Accelerated: $${principalPaidExtra.toFixed(2)}</div>
+            </div>`;
+    } else {
+        resultsHTML += `
+            <div class="result-item warning">
+                Warning: Your current payment is below the new minimum payment
+            </div>`;
     }
 
-    // Calculate all scenarios
-    const current = calculateAmortization(loanAmount, currentRate, years);
-    const newPlan = calculateAmortization(loanAmount, newRate, years);
-    const withExtra = calculateAmortization(loanAmount, newRate, years, extraPayment);
-
-    // Calculate differences
-    const interestSaved = (current.totalInterest - newPlan.totalInterest).toFixed(2);
-    const monthlySavings = (current.monthlyPayment - newPlan.monthlyPayment).toFixed(2);
-    const extraInterestSaved = (newPlan.totalInterest - withExtra.totalInterest).toFixed(2);
-    const extraPrincipalPaid = (withExtra.totalPrincipal - newPlan.totalPrincipal).toFixed(2);
-
-    // Display results
-    document.getElementById('currentResults').innerHTML = `
-        Monthly Payment: $${current.monthlyPayment}<br>
-        Total Interest (${years} yrs): $${current.totalInterest}<br>
-        Total Principal Paid: $${current.totalPrincipal}
-    `;
-
-    document.getElementById('newResults').innerHTML = `
-        Monthly Payment: $${newPlan.monthlyPayment}<br>
-        Total Interest (${years} yrs): $${newPlan.totalInterest}<br>
-        Total Principal Paid: $${newPlan.totalPrincipal}<br>
-        <strong>Monthly Savings:</strong> $${monthlySavings}<br>
-        <strong>Total Interest Saved:</strong> $${interestSaved}
-    `;
-
-    document.getElementById('extraResults').innerHTML = `
-        New Monthly Payment: $${(parseFloat(newPlan.monthlyPayment) + extraPayment).toFixed(2)}<br>
-        Total Interest Saved with Extra: $${extraInterestSaved}<br>
-        Additional Principal Paid: $${extraPrincipalPaid}<br>
-        Total Principal Paid: $${withExtra.totalPrincipal}
-    `;
+    document.getElementById('results').innerHTML = resultsHTML;
 }
 
-function calculateAmortization(principal, annualRate, years, extraPayment = 0) {
-    const monthlyRate = annualRate / 1200;
+function calculateMonthlyPayment(principal, rate, years) {
+    const monthlyRate = rate / 12;
     const months = years * 12;
-    const monthlyPayment = (principal * monthlyRate * Math.pow(1 + monthlyRate, months)) / (Math.pow(1 + monthlyRate, months) - 1);
-    
-    let currentPrincipal = principal;
+    return principal * monthlyRate / (1 - Math.pow(1 + monthlyRate, -months));
+}
+
+function calculateTotalInterest(principal, rate, monthlyPayment) {
+    let balance = principal;
     let totalInterest = 0;
-    let totalPrincipal = 0;
+    const monthlyRate = rate / 12;
     
-    for (let month = 1; month <= months; month++) {
-        if (currentPrincipal <= 0) break;
-        
-        const interest = currentPrincipal * monthlyRate;
-        const basePrincipalPayment = monthlyPayment - interest;
-        const totalPayment = monthlyPayment + extraPayment;
-        const principalPayment = Math.min(basePrincipalPayment + extraPayment, currentPrincipal);
-        
+    while (balance > 0) {
+        const interest = balance * monthlyRate;
         totalInterest += interest;
-        totalPrincipal += principalPayment;
-        currentPrincipal -= principalPayment;
+        const principalPayment = monthlyPayment - interest;
+        balance -= principalPayment;
     }
     
-    return {
-        monthlyPayment: monthlyPayment.toFixed(2),
-        totalInterest: totalInterest.toFixed(2),
-        totalPrincipal: totalPrincipal.toFixed(2)
-    };
+    return totalInterest;
 }
